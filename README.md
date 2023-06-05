@@ -9,7 +9,19 @@ Projet disponible sur [github](https://github.com/AlanBlanchet/CategorisezAutoma
 
 # Installation
 
-Les placer dans le dossier "data"
+Aller sur [StackExchange](https://data.stackexchange.com/stackoverflow/query/new)
+
+Y insérer cette requête :
+
+```SQL
+SELECT TOP 500000 Title, Body, Tags, Id, Score, ViewCount, FavoriteCount, AnswerCount
+FROM Posts 
+WHERE PostTypeId = 1 AND ViewCount > 10 AND Score > 5 AND AnswerCount > 0 AND LEN(Tags) - LEN(REPLACE(Tags, '<','')) >= 5
+```
+
+Lancer la requête puis clicker sur "Download CSV"
+
+Placer le CSV dans le dossier "data"
 
 Lancer la commande (nécessite [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html))
 
