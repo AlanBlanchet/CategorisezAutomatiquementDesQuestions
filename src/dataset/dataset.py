@@ -11,32 +11,34 @@ pd.options.mode.chained_assignment = None
 
 @dataclass
 class Dataset:
+    DEFAULT_VERSION: ClassVar[int] = 1e20
     data_path: ClassVar[Path] = Path(__file__).parents[2] / "data"
     raw_path: ClassVar[Path] = data_path / "raw"
     processed_path: ClassVar[Path] = data_path / "processed"
 
     @classmethod
-    def organize(cls):
-        csvs = [*cls.data_path.rglob("*.csv")]
+    def init(cls):
+        if not hasattr(cls, "stopwords") or not hasattr(cls, "stemmer") is None:
+            csvs = [*cls.data_path.rglob("*.csv")]
 
-        cls.raw_path.mkdir(exist_ok=True)
-        cls.processed_path.mkdir(exist_ok=True)
+            cls.raw_path.mkdir(exist_ok=True)
+            cls.processed_path.mkdir(exist_ok=True)
 
-        for i, csv in enumerate(csvs, start=1):
-            shutil.move(csv, cls.raw_path / f"topics{i}.csv")
+            for i, csv in enumerate(csvs, start=1):
+                shutil.move(csv, cls.raw_path / f"topics{i}.csv")
 
-        nltk_path = cls.data_path / ".nltk"
+            nltk_path = cls.data_path / ".nltk"
 
-        nltk.download("stopwords", download_dir=nltk_path, quiet=True)
-        nltk.download("punkt", download_dir=nltk_path, quiet=True)
-        nltk.data.path.append(nltk_path)
+            nltk.download("stopwords", download_dir=nltk_path, quiet=True)
+            nltk.download("punkt", download_dir=nltk_path, quiet=True)
+            nltk.data.path.append(nltk_path)
 
-        cls.stopwords = nltk.corpus.stopwords.words("english")
-        cls.stemmer = nltk.stem.PorterStemmer()
+            cls.stopwords = nltk.corpus.stopwords.words("english")
+            cls.stemmer = nltk.stem.PorterStemmer()
         return cls
 
     @classmethod
-    def _preprocess(cls, df, original=False):
+    def _preprocess(cls, df, original=False, version=DEFAULT_VERSION):
         # Rename cols
         df.columns = ["title", "text", "target"]
 
@@ -77,7 +79,10 @@ class Dataset:
         source: Literal["raw", "processed"] = "raw",
         n_sample: int = None,
         original=False,
+        random_state=None,
+        version=DEFAULT_VERSION,
     ):
+        cls.init()
         path = cls.raw_path / name
         if source == "processed":
             path = cls.processed_path / name
@@ -85,6 +90,20 @@ class Dataset:
         df = pd.read_csv(path)[["Title", "Body", "Tags"]]
 
         if n_sample is not None:
-            df = df.sample(n_sample)
+            df = df.sample(n_sample, random_state=random_state)
 
-        return cls._preprocess(df, original=original)
+        return cls._preprocess(df, original=original, version=version)
+
+    @classmethod
+    def example(cls, name: str, version=DEFAULT_VERSION, random_state=None):
+        dataset = cls.use(
+            name,
+            n_sample=1,
+            original=True,
+            random_state=random_state,
+            version=version,
+        )
+
+        print("Original " + "=" * 44 + "\n", dataset["original"].values[0])
+
+        print("Parsed " + "=" * 46 + "\n", str(dataset["text"].values[0]))
