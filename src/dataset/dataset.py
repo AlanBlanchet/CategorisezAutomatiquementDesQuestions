@@ -11,6 +11,10 @@ from tqdm import tqdm
 from pandarallel import pandarallel
 import ipywidgets as widgets
 from IPython.display import display
+import regex as re
+from pygments.lexers import guess_lexer
+
+from html import unescape
 
 pd.options.mode.chained_assignment = None
 pandarallel.initialize(verbose=0)
@@ -22,6 +26,10 @@ class Dataset:
     data_path: ClassVar[Path] = Path(__file__).parents[2] / "data"
     raw_path: ClassVar[Path] = data_path / "raw"
     processed_path: ClassVar[Path] = data_path / "processed"
+    url_regex: ClassVar[
+        str
+    ] = r"(\w+:\/{2}|www\.)[\d\w-]+(\.[\d\w-]+)*(?:(?:\/[^\s/]*))*"
+
 
     @classmethod
     def init(cls):
@@ -49,16 +57,25 @@ class Dataset:
         # Rename cols
         df.columns = ["title", "text", "target"]
 
-        def parse_html(text):
+        def parse_html(text, remove=True):
             soup = BeautifulSoup(text, "html.parser")
-            # Code blocks usually cause trouble
-            [code.decompose() for code in soup.find_all("code")]
+            code = soup.find_all("code")
+            add = ""
+            if version > 3: 
+                for l in [unescape(c.get_text()) for c in code]:
+                    try:
+                        add += "".join(guess_lexer(l).name.lower().split(" ")) + " "
+                    except:
+                        pass
+            if remove:
+                # Code blocks usually cause trouble
+                [c.decompose() for c in code]
             # Return text only
-            return soup.get_text(separator=" ")
+            return soup.get_text(separator=" ") + add
 
         # Keep original for comparison - Remove html
         if original:
-            df["original"] = df["text"].parallel_apply(parse_html)
+            df["original"] = df["text"].parallel_apply(lambda x:parse_html(x, remove=False))
 
         if version > 0:
 
@@ -68,15 +85,31 @@ class Dataset:
 
             def tokenize(text):
                 text = nltk.word_tokenize(text)
+                if version > 2:
+                    text = nltk.tokenize.MWETokenizer(
+                        [("c", "#"), ("f", "#"), ("+", "+")], separator=""
+                    ).tokenize(text)
                 text = [t for t in text if t not in cls.stopwords]
                 if version > 1:
-                    text = nltk.RegexpTokenizer(r"\w+").tokenize(" ".join(text))
+                    reg = r"\w+" if version < 3 else r"\w+[#-+]*"
+                    text = nltk.RegexpTokenizer(reg).tokenize(" ".join(text))
                 return " ".join(text)
+
+            def url_remover(text):
+                if version > 3:
+                    text = re.sub(
+                        cls.url_regex,
+                        "",
+                        text,
+                        flags=re.MULTILINE,
+                    )
+                return text
 
             # Features
             df["text"] = (
                 df["text"]
                 .str.lower()
+                .parallel_apply(url_remover)
                 .parallel_apply(parse_html)
                 .parallel_apply(tokenize)
                 .parallel_apply(stemming)
@@ -177,12 +210,17 @@ class Dataset:
     ):
         # See data examples for the specified version of the script
         if interactive:
-            index = 0
+            if index is None:
+                index = 0
+            else:
+                index = index
+            from_button = False
 
             def operation(n):
-                global index
+                global index, from_button
+                from_button = True
 
-                def op_show(x):
+                def op_show(_):
                     show(index + n)
 
                 return op_show
@@ -194,15 +232,16 @@ class Dataset:
             next_b.on_click(operation(1))
 
             def update_text(x):
-                if x["old"] != x["new"]:
+                global index
+                if x["old"] == index:
                     show(x["new"])
 
             index_i = widgets.BoundedIntText(
-                name="IntInput", value=index, step=1, start=0, end=5e4
+                name="IntInput", value=index, step=1, start=0, end=5e4, max=5e4
             )
             index_i.observe(update_text, "value")
 
-            hbox = widgets.HBox([prev_b, next_b, index_i])
+            hbox = widgets.HBox([prev_b, next_b, index_i], background_color="red")
 
             def show(n):
                 global index
@@ -211,15 +250,13 @@ class Dataset:
                 display(hbox, clear=True)
                 try:
                     print("-" * 15, f"{index=}")
-                    print(
-                        Dataset.example(
-                            "topics1.csv", random_state=0, version=version, index=index
-                        )
+                    Dataset.example(
+                        "topics1.csv", random_state=0, version=version, index=index
                     )
                 except:
                     print(f"Error with {index=}")
 
-            show(0)
+            show(index)
         else:
             dataset = cls.use(
                 name,
@@ -231,6 +268,5 @@ class Dataset:
             )
 
             print("Original " + "=" * 44 + "\n", dataset["original"].values[0])
-
             print("Parsed " + "=" * 46 + "\n", str(dataset["text"].values[0]))
             print("Targets " + "=" * 10, dataset["target"].values[0])
