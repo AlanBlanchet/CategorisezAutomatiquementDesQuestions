@@ -30,7 +30,6 @@ class Dataset:
         str
     ] = r"(\w+:\/{2}|www\.)[\d\w-]+(\.[\d\w-]+)*(?:(?:\/[^\s/]*))*"
 
-
     @classmethod
     def init(cls):
         if not hasattr(cls, "stopwords") or not hasattr(cls, "stemmer") is None:
@@ -61,13 +60,13 @@ class Dataset:
             soup = BeautifulSoup(text, "html.parser")
             code = soup.find_all("code")
             add = ""
-            if version > 3: 
+            if version == 4 or version == 5:
                 for l in [unescape(c.get_text()) for c in code]:
                     try:
                         add += "".join(guess_lexer(l).name.lower().split(" ")) + " "
                     except:
                         pass
-            if remove:
+            if remove and version < 6:
                 # Code blocks usually cause trouble
                 [c.decompose() for c in code]
             # Return text only
@@ -75,7 +74,10 @@ class Dataset:
 
         # Keep original for comparison - Remove html
         if original:
-            df["original"] = df["text"].parallel_apply(lambda x:parse_html(x, remove=False))
+            df["original_text"] = df["text"].parallel_apply(
+                lambda x: parse_html(x, remove=False)
+            )
+            df["original_title"] = df["title"]
 
         if version > 0:
 
@@ -89,7 +91,14 @@ class Dataset:
                     text = nltk.tokenize.MWETokenizer(
                         [("c", "#"), ("f", "#"), ("+", "+")], separator=""
                     ).tokenize(text)
-                text = [t for t in text if t not in cls.stopwords]
+                if version > 4:
+                    text = [t for t in text if t not in [*cls.stopwords, "n't"]]
+                    # Remove all single letters but keep C (as it is a language)
+                    text = [
+                        t for t in text if len(re.sub(r"['\"]", "", t)) != 1 or t == "c"
+                    ]
+                else:
+                    text = [t for t in text if t not in cls.stopwords]
                 if version > 1:
                     reg = r"\w+" if version < 3 else r"\w+[#-+]*"
                     text = nltk.RegexpTokenizer(reg).tokenize(" ".join(text))
@@ -114,6 +123,14 @@ class Dataset:
                 .parallel_apply(tokenize)
                 .parallel_apply(stemming)
             )
+            if version > 6:
+                df["title"] = (
+                    df["title"]
+                    .str.lower()
+                    .parallel_apply(url_remover)
+                    .parallel_apply(tokenize)
+                    .parallel_apply(stemming)
+                )
 
         # Target
         df["target"] = df["target"].str.replace("><", "|").str.strip("<>").str.lower()
@@ -207,6 +224,7 @@ class Dataset:
         random_state=None,
         index=None,
         interactive=False,
+        mode: Literal["title", "text"] = "text",
     ):
         # See data examples for the specified version of the script
         if interactive:
@@ -251,7 +269,11 @@ class Dataset:
                 try:
                     print("-" * 15, f"{index=}")
                     Dataset.example(
-                        "topics1.csv", random_state=0, version=version, index=index
+                        "topics1.csv",
+                        random_state=0,
+                        version=version,
+                        index=index,
+                        mode=mode,
                     )
                 except:
                     print(f"Error with {index=}")
@@ -267,6 +289,6 @@ class Dataset:
                 index=index,
             )
 
-            print("Original " + "=" * 44 + "\n", dataset["original"].values[0])
-            print("Parsed " + "=" * 46 + "\n", str(dataset["text"].values[0]))
+            print("Original " + "=" * 44 + "\n", dataset[f"original_{mode}"].values[0])
+            print("Parsed " + "=" * 46 + "\n", str(dataset[mode].values[0]))
             print("Targets " + "=" * 10, dataset["target"].values[0])
