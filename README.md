@@ -2,10 +2,10 @@ Projet disponible sur [github](https://github.com/AlanBlanchet/CategorisezAutoma
 
 # Introduction
 
-- Auteur                : Alan Blanchet
-- Ecole                 : OpenClassrooms
-- Mentor Ecole          : Chemseddine Nabti
-- Tuteur entreprise     : Arthur Derathé
+- Auteur : Alan Blanchet
+- Ecole : OpenClassrooms
+- Mentor Ecole : Chemseddine Nabti
+- Tuteur entreprise : Arthur Derathé
 
 # Installation
 
@@ -14,8 +14,8 @@ Aller sur [StackExchange](https://data.stackexchange.com/stackoverflow/query/new
 Y insérer cette requête :
 
 ```SQL
-SELECT TOP 500000 Title, Body, Tags, Id, Score, ViewCount, FavoriteCount, AnswerCount
-FROM Posts 
+SELECT TOP 500000 Title, Body, Tags
+FROM Posts
 WHERE PostTypeId = 1 AND ViewCount > 10 AND Score > 5 AND AnswerCount > 0 AND LEN(Tags) - LEN(REPLACE(Tags, '<','')) >= 5
 ```
 
@@ -34,4 +34,12 @@ conda activate oc
 
 ```bash
 jupyter notebook
+```
+
+# Matériel
+
+Les scripts de ce repo git ont été lancées avec les informations hardware et logiciels suivants :
+
+```bash
+
 ```

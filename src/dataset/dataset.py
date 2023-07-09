@@ -13,6 +13,8 @@ import ipywidgets as widgets
 from IPython.display import display
 import regex as re
 from pygments.lexers import guess_lexer
+import cudf
+from operator import itemgetter
 
 from html import unescape
 
@@ -22,6 +24,8 @@ pandarallel.initialize(verbose=0)
 
 @dataclass
 class Dataset:
+    name: str
+
     DEFAULT_VERSION: ClassVar[int] = 1e20
     data_path: ClassVar[Path] = Path(__file__).parents[2] / "data"
     raw_path: ClassVar[Path] = data_path / "raw"
@@ -30,6 +34,46 @@ class Dataset:
         str
     ] = r"(\w+:\/{2}|www\.)[\d\w-]+(\.[\d\w-]+)*(?:(?:\/[^\s/]*))*"
 
+    def __post_init__(self):
+        Dataset.init()
+
+        path = Dataset.raw_path / self.name
+        # Will be a cudf DataFrame but to get type hints type it as a pandas DataFrame
+        df = cudf.read_csv(path)[["Title", "Body", "Tags"]]
+
+        self.df: pd.DataFrame = df
+        # Do some basic preprocessing
+        self.__preprocess()
+
+        self._id2label = {
+            k: v
+            for k, v in enumerate(
+                set(self.df["target"].str.split("|").to_pandas().explode())
+            )
+        }
+        self._label2id = {v: k for k, v in self._id2label.items()}
+        self.id2label = lambda keys: list(map(self._id2label.get, keys))
+        self.label2id = lambda keys: list(map(self._label2id.get, keys))
+
+    def __preprocess(self):
+        self.df.columns = ["title", "text", "target"]
+
+        def parse_html(text):
+            soup = BeautifulSoup(text, "html.parser")
+            # code = soup.find_all("code")
+            # [c.decompose() for c in code]
+            # Return text only
+            return soup.get_text(separator=" ")
+
+        self.df["text"] = (
+            self.df["text"].str.lower().to_pandas().parallel_apply(parse_html)
+        )
+        self.df["title"] = self.df["title"].str.lower()
+        self.df["original_text"] = self.df["text"]
+        self.df["original_title"] = self.df["title"]
+        self.df["target"] = (
+            self.df["target"].str.replace("><", "|").str.strip("<>").str.lower()
+        )
 
     @classmethod
     def init(cls):
@@ -48,12 +92,12 @@ class Dataset:
             nltk.download("punkt", download_dir=nltk_path, quiet=True)
             nltk.data.path.append(nltk_path)
 
-            cls.stopwords = nltk.corpus.stopwords.words("english")
-            cls.stemmer = nltk.stem.PorterStemmer()
+            cls.nltk_stopwords = nltk.corpus.stopwords.words("english")
+            cls.nltk_stemmer = nltk.stem.PorterStemmer()
         return cls
 
     @classmethod
-    def _preprocess(cls, df, original=False, version=DEFAULT_VERSION):
+    def _preprocess(cls, df, version=DEFAULT_VERSION):
         # Rename cols
         df.columns = ["title", "text", "target"]
 
@@ -61,39 +105,19 @@ class Dataset:
             soup = BeautifulSoup(text, "html.parser")
             code = soup.find_all("code")
             add = ""
-            if version > 3: 
+            if version == 4 or version == 5:
                 for l in [unescape(c.get_text()) for c in code]:
                     try:
                         add += "".join(guess_lexer(l).name.lower().split(" ")) + " "
                     except:
                         pass
-            if remove:
+            if remove and version < 6:
                 # Code blocks usually cause trouble
                 [c.decompose() for c in code]
             # Return text only
             return soup.get_text(separator=" ") + add
 
-        # Keep original for comparison - Remove html
-        if original:
-            df["original"] = df["text"].parallel_apply(lambda x:parse_html(x, remove=False))
-
         if version > 0:
-
-            def stemming(text):
-                text = [cls.stemmer.stem(plural) for plural in text.split(" ")]
-                return " ".join(text)
-
-            def tokenize(text):
-                text = nltk.word_tokenize(text)
-                if version > 2:
-                    text = nltk.tokenize.MWETokenizer(
-                        [("c", "#"), ("f", "#"), ("+", "+")], separator=""
-                    ).tokenize(text)
-                text = [t for t in text if t not in cls.stopwords]
-                if version > 1:
-                    reg = r"\w+" if version < 3 else r"\w+[#-+]*"
-                    text = nltk.RegexpTokenizer(reg).tokenize(" ".join(text))
-                return " ".join(text)
 
             def url_remover(text):
                 if version > 3:
@@ -114,11 +138,29 @@ class Dataset:
                 .parallel_apply(tokenize)
                 .parallel_apply(stemming)
             )
+            if version > 6:
+                df["title"] = (
+                    df["title"]
+                    .str.lower()
+                    .parallel_apply(url_remover)
+                    .parallel_apply(tokenize)
+                    .parallel_apply(stemming)
+                )
 
         # Target
         df["target"] = df["target"].str.replace("><", "|").str.strip("<>").str.lower()
 
         return df
+    
+    def to(self, device:Literal["cpu", "gpu"] = "cpu"):
+        """
+        Method used to save memory by switching the DataFrame device
+        """
+        if(device == "cpu" and type(self.df) == cudf.DataFrame):
+            self.df = self.df.to_pandas()
+        elif device =="gpu" and type(self.df == pd.DataFrame):
+            self.df = cudf.DataFrame(self.df)
+
 
     @classmethod
     def use(
@@ -148,15 +190,11 @@ class Dataset:
 
         return cls._preprocess(df, original=original, version=version)
 
-    @classmethod
-    def most_common(
-        cls, name: str, version=DEFAULT_VERSION, fps=50, skip=100, n=50, animate=False
-    ):
-        data = cls.use("topics1.csv", version=version)
+    def most_common(self, name, fps=50, skip=100, n=50, animate=False):
         freq = nltk.FreqDist()
 
         if animate:
-            frames = len(data.text) // skip
+            frames = len(self.df["text"]) // skip
             loader = tqdm(total=frames)
             fig, ax = plt.subplots()
             _, _, patches = ax.hist([], bins=n)
@@ -167,7 +205,7 @@ class Dataset:
 
             def anim(frame):
                 for i in range(frame * skip, frame * skip + skip):
-                    freq.update(data.text[i].split(" "))
+                    freq.update(self.df["text"][i].split(" "))
 
                 common = list(zip(*freq.most_common(n)))
                 vals = common[0]
@@ -195,18 +233,16 @@ class Dataset:
             loader.close()
             plt.show()
         else:
-            [freq.update(sentence.split(" ")) for sentence in tqdm(data.text)]
+            texts = self.df["text"].to_pandas() if self.gpu else self.df["text"]
+            [freq.update(sentence.split(" ")) for sentence in tqdm(texts)]
 
         return freq
 
-    @classmethod
     def example(
-        cls,
-        name: str,
-        version=DEFAULT_VERSION,
-        random_state=None,
+        self,
         index=None,
-        interactive=False,
+        interactive=True,
+        mode: Literal["title", "text"] = "text",
     ):
         # See data examples for the specified version of the script
         if interactive:
@@ -250,23 +286,17 @@ class Dataset:
                 display(hbox, clear=True)
                 try:
                     print("-" * 15, f"{index=}")
-                    Dataset.example(
-                        "topics1.csv", random_state=0, version=version, index=index
-                    )
+                    self.example(index, mode=mode, interactive=False)
                 except:
                     print(f"Error with {index=}")
 
             show(index)
         else:
-            dataset = cls.use(
-                name,
-                n_sample=1,
-                original=True,
-                random_state=random_state,
-                version=version,
-                index=index,
-            )
+            line = self.df.loc[index].reset_index()
 
-            print("Original " + "=" * 44 + "\n", dataset["original"].values[0])
-            print("Parsed " + "=" * 46 + "\n", str(dataset["text"].values[0]))
-            print("Targets " + "=" * 10, dataset["target"].values[0])
+            print("Original " + "=" * 44 + "\n", line[f"original_{mode}"][0])
+            print("Parsed " + "=" * 46 + "\n", str(line[mode][0]))
+            print("Targets " + "=" * 10, line["target"][0])
+
+    def __getitem__(self, index):
+        return self.df.loc[index]
