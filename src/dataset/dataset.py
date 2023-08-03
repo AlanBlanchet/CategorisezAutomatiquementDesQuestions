@@ -12,10 +12,7 @@ from pandarallel import pandarallel
 import ipywidgets as widgets
 from IPython.display import display
 import regex as re
-from pygments.lexers import guess_lexer
 import cudf
-
-from html import unescape
 
 pd.options.mode.chained_assignment = None
 pandarallel.initialize(verbose=0)
@@ -24,7 +21,8 @@ pandarallel.initialize(verbose=0)
 @dataclass
 class Dataset:
     name: str
-    n:int = -1
+    n: int = -1
+    device: Literal["gpu", "cpu"] = "gpu"
 
     DEFAULT_VERSION: ClassVar[int] = 1e20
     data_path: ClassVar[Path] = Path(__file__).parents[2] / "data"
@@ -33,6 +31,17 @@ class Dataset:
     url_regex: ClassVar[
         str
     ] = r"(\w+:\/{2}|www\.)[\d\w-]+(\.[\d\w-]+)*(?:(?:\/[^\s/]*))*"
+    num_targets: ClassVar[int] = 5
+    target_encodings: ClassVar[dict] = {
+        # c#, f#, j# to c-sharp, f-sharp, j-sharp
+        "(c|f|j)#": r"\1-sharp",
+        # c++ to cpp
+        r"\+\+": "pp",
+        # gdi+ to gdi-plus
+        r"\+": "-plus",
+        # pkcs#12, pkcs#5 to pkcs
+        r"(.*)#\d+": r"\1",
+    }
 
     def __post_init__(self):
         Dataset.init()
@@ -43,28 +52,20 @@ class Dataset:
 
         if feather_p.exists():
             # Get arrow for fast loading
-            df = cudf.read_feather(feather_p).iloc[:self.n]
+            df = cudf.read_feather(feather_p).iloc[: self.n]
         else:
             # Will be a cudf DataFrame but to get type hints type it as a pandas DataFrame
             df = cudf.read_csv(path.with_suffix(".csv"))[["Title", "Body", "Tags"]]
             # Output to arrow for next import
             df.to_feather(feather_p)
-            df = df.iloc[:self.n]
-
-        # Export to arrow if doesn't exist
-        
-
+            df = df.iloc[: self.n]
 
         self.df: pd.DataFrame = df
         # Do some basic preprocessing
-        self.__preprocess()
+        self.targets = [f"target{x+1}" for x in range(Dataset.num_targets)]
+        self.freq = self.__preprocess()
 
-        self._id2label = {
-            k: v
-            for k, v in enumerate(
-                set(self.df["target"].str.split("|").to_pandas().explode())
-            )
-        }
+        self._id2label = {k: v for k, v in enumerate(self.freq.keys())}
         self._label2id = {v: k for k, v in self._id2label.items()}
         self.id2label = lambda keys: list(map(self._id2label.get, keys))
         self.label2id = lambda keys: list(map(self._label2id.get, keys))
@@ -78,7 +79,7 @@ class Dataset:
             # [c.decompose() for c in code]
             # Return text only
             return soup.get_text(separator=" ")
-        
+
         def url_remover(text):
             text = re.sub(
                 Dataset.url_regex,
@@ -87,7 +88,7 @@ class Dataset:
                 flags=re.MULTILINE,
             )
             return text
-        
+
         def stemming(text):
             text = [Dataset.nltk_stemmer.stem(plural) for plural in text.split(" ")]
             return " ".join(text)
@@ -103,21 +104,59 @@ class Dataset:
 
         self.to("cpu")
         # Simple parsing
-        self.df["text"] = (
-            self.df["text"].str.lower().parallel_apply(parse_html)
-        )
+        self.df["text"] = self.df["text"].str.lower().parallel_apply(parse_html)
         self.df["title"] = self.df["title"].str.lower()
         # Keep original for comparison
         self.df["original_text"] = self.df["text"]
         self.df["original_title"] = self.df["title"]
         # Preprocess
-        self.df["text"] = self.df["text"].parallel_apply(url_remover).parallel_apply(tokenize).parallel_apply(stemming)
-        self.df["title"] = self.df["title"].parallel_apply(url_remover).parallel_apply(tokenize)
+        self.df["text"] = (
+            self.df["text"]
+            .parallel_apply(url_remover)
+            .parallel_apply(tokenize)
+            .parallel_apply(stemming)
+        )
+        self.df["title"] = (
+            self.df["title"].parallel_apply(url_remover).parallel_apply(tokenize)
+        )
         # Change target encoding
         self.df["target"] = (
             self.df["target"].str.replace("><", "|").str.strip("<>").str.lower()
         )
+
+        # Expand targets
+        self.df[self.targets] = (
+            self.df["target"]
+            .str.split("|", expand=True)
+            .loc[:, : Dataset.num_targets - 1]
+        )
+        self.df = self.df.drop("target", axis="columns")
+
+        def encode(target: str):
+            for key, value in Dataset.target_encodings.items():
+                if re.search(key, target) is not None:
+                    return re.sub(key, value, target)
+            return target
+
+        # Encode targets
+        self.df[self.targets] = self.df[self.targets].parallel_apply(
+            lambda targets: [encode(target) for target in targets.values]
+        )
+
+        # Get target frequencies
+        f = nltk.FreqDist()
+        for x in self.df[self.targets].values.flatten():
+            f[x] += 1
+
+        # Sort targets to have most common to target 1 and lowest to target 5
+        self.df[self.targets] = self.df[self.targets].parallel_apply(
+            lambda df: pd.Series(sorted(df.values, key=lambda x: f[x], reverse=True)),
+            axis=1,
+        )
+
         self.to("gpu")
+
+        return f
 
     @classmethod
     def init(cls):
@@ -139,16 +178,17 @@ class Dataset:
             cls.nltk_stopwords = nltk.corpus.stopwords.words("english")
             cls.nltk_stemmer = nltk.stem.PorterStemmer()
         return cls
-    
-    def to(self, device:Literal["cpu", "gpu"] = "cpu"):
+
+    def to(self, device: Literal["cpu", "gpu"] = "cpu"):
         """
         Method used to save memory by switching the DataFrame device
         """
-        if(device == "cpu" and type(self.df) == cudf.DataFrame):
+        if device == "cpu" and type(self.df) == cudf.DataFrame:
+            self.device = device
             self.df = self.df.to_pandas()
-        elif device =="gpu" and type(self.df == pd.DataFrame):
+        elif device == "gpu" and type(self.df == pd.DataFrame):
+            self.device = device
             self.df = cudf.DataFrame(self.df)
-
 
     @classmethod
     def use(
@@ -284,7 +324,7 @@ class Dataset:
 
             print("Original " + "=" * 44 + "\n", line[f"original_{mode}"][0])
             print("Parsed " + "=" * 46 + "\n", str(line[mode][0]))
-            print("Targets " + "=" * 10, line["target"][0])
+            print("Targets " + "=" * 10, line[self.targets].to_pandas().values[0])
 
     def __getitem__(self, index):
         return self.df.loc[index]
