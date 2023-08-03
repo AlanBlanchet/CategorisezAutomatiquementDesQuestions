@@ -14,7 +14,6 @@ from IPython.display import display
 import regex as re
 from pygments.lexers import guess_lexer
 import cudf
-from operator import itemgetter
 
 from html import unescape
 
@@ -25,6 +24,7 @@ pandarallel.initialize(verbose=0)
 @dataclass
 class Dataset:
     name: str
+    n:int = -1
 
     DEFAULT_VERSION: ClassVar[int] = 1e20
     data_path: ClassVar[Path] = Path(__file__).parents[2] / "data"
@@ -38,8 +38,22 @@ class Dataset:
         Dataset.init()
 
         path = Dataset.raw_path / self.name
-        # Will be a cudf DataFrame but to get type hints type it as a pandas DataFrame
-        df = cudf.read_csv(path)[["Title", "Body", "Tags"]]
+
+        feather_p = path.with_suffix(".arrow")
+
+        if feather_p.exists():
+            # Get arrow for fast loading
+            df = cudf.read_feather(feather_p).iloc[:self.n]
+        else:
+            # Will be a cudf DataFrame but to get type hints type it as a pandas DataFrame
+            df = cudf.read_csv(path.with_suffix(".csv"))[["Title", "Body", "Tags"]]
+            # Output to arrow for next import
+            df.to_feather(feather_p)
+            df = df.iloc[:self.n]
+
+        # Export to arrow if doesn't exist
+        
+
 
         self.df: pd.DataFrame = df
         # Do some basic preprocessing
@@ -64,16 +78,46 @@ class Dataset:
             # [c.decompose() for c in code]
             # Return text only
             return soup.get_text(separator=" ")
+        
+        def url_remover(text):
+            text = re.sub(
+                Dataset.url_regex,
+                "",
+                text,
+                flags=re.MULTILINE,
+            )
+            return text
+        
+        def stemming(text):
+            text = [Dataset.nltk_stemmer.stem(plural) for plural in text.split(" ")]
+            return " ".join(text)
 
+        def tokenize(text):
+            text = nltk.word_tokenize(text)
+            text = nltk.tokenize.MWETokenizer(
+                [("c", "#"), ("f", "#"), ("+", "+")], separator=""
+            ).tokenize(text)
+            text = [t for t in text if t not in Dataset.nltk_stopwords]
+            text = nltk.RegexpTokenizer(r"\w+[#-+]*").tokenize(" ".join(text))
+            return " ".join(text)
+
+        self.to("cpu")
+        # Simple parsing
         self.df["text"] = (
-            self.df["text"].str.lower().to_pandas().parallel_apply(parse_html)
+            self.df["text"].str.lower().parallel_apply(parse_html)
         )
         self.df["title"] = self.df["title"].str.lower()
+        # Keep original for comparison
         self.df["original_text"] = self.df["text"]
         self.df["original_title"] = self.df["title"]
+        # Preprocess
+        self.df["text"] = self.df["text"].parallel_apply(url_remover).parallel_apply(tokenize).parallel_apply(stemming)
+        self.df["title"] = self.df["title"].parallel_apply(url_remover).parallel_apply(tokenize)
+        # Change target encoding
         self.df["target"] = (
             self.df["target"].str.replace("><", "|").str.strip("<>").str.lower()
         )
+        self.to("gpu")
 
     @classmethod
     def init(cls):
@@ -95,62 +139,6 @@ class Dataset:
             cls.nltk_stopwords = nltk.corpus.stopwords.words("english")
             cls.nltk_stemmer = nltk.stem.PorterStemmer()
         return cls
-
-    @classmethod
-    def _preprocess(cls, df, version=DEFAULT_VERSION):
-        # Rename cols
-        df.columns = ["title", "text", "target"]
-
-        def parse_html(text, remove=True):
-            soup = BeautifulSoup(text, "html.parser")
-            code = soup.find_all("code")
-            add = ""
-            if version == 4 or version == 5:
-                for l in [unescape(c.get_text()) for c in code]:
-                    try:
-                        add += "".join(guess_lexer(l).name.lower().split(" ")) + " "
-                    except:
-                        pass
-            if remove and version < 6:
-                # Code blocks usually cause trouble
-                [c.decompose() for c in code]
-            # Return text only
-            return soup.get_text(separator=" ") + add
-
-        if version > 0:
-
-            def url_remover(text):
-                if version > 3:
-                    text = re.sub(
-                        cls.url_regex,
-                        "",
-                        text,
-                        flags=re.MULTILINE,
-                    )
-                return text
-
-            # Features
-            df["text"] = (
-                df["text"]
-                .str.lower()
-                .parallel_apply(url_remover)
-                .parallel_apply(parse_html)
-                .parallel_apply(tokenize)
-                .parallel_apply(stemming)
-            )
-            if version > 6:
-                df["title"] = (
-                    df["title"]
-                    .str.lower()
-                    .parallel_apply(url_remover)
-                    .parallel_apply(tokenize)
-                    .parallel_apply(stemming)
-                )
-
-        # Target
-        df["target"] = df["target"].str.replace("><", "|").str.strip("<>").str.lower()
-
-        return df
     
     def to(self, device:Literal["cpu", "gpu"] = "cpu"):
         """

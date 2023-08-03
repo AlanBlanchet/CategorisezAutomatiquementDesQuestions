@@ -1,6 +1,9 @@
 data/*
 !data/.gitkeep
 
+MLproject*
+mlruns/*
+
 *.gif
 
 # Byte-compiled / optimized / DLL files
