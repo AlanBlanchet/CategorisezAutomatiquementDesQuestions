@@ -39,6 +39,7 @@ pytorch-lightning = "^2.0.5"
 pyldavis = { git = "https://github.com/AlanBlanchet/pyLDAvis.git" }
 datasets = "^2.14.1"
 evaluate = "^0.4.0"
+ipykernel = "^6.25.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.3.0"

@@ -22,7 +22,7 @@ pandarallel.initialize(verbose=0)
 class Dataset:
     name: str
     n: int = -1
-    device: Literal["gpu", "cpu"] = "gpu"
+    device: Literal["gpu", "cpu"] = "cpu"
 
     DEFAULT_VERSION: ClassVar[int] = 1e20
     data_path: ClassVar[Path] = Path(__file__).parents[2] / "data"
@@ -52,10 +52,10 @@ class Dataset:
 
         if feather_p.exists():
             # Get arrow for fast loading
-            df = cudf.read_feather(feather_p).iloc[: self.n]
+            df = pd.read_feather(feather_p).iloc[: self.n]
         else:
             # Will be a cudf DataFrame but to get type hints type it as a pandas DataFrame
-            df = cudf.read_csv(path.with_suffix(".csv"))[["Title", "Body", "Tags"]]
+            df = pd.read_csv(path.with_suffix(".csv"))[["Title", "Body", "Tags"]]
             # Output to arrow for next import
             df.to_feather(feather_p)
             df = df.iloc[: self.n]
@@ -102,7 +102,6 @@ class Dataset:
             text = nltk.RegexpTokenizer(r"\w+[#-+]*").tokenize(" ".join(text))
             return " ".join(text)
 
-        self.to("cpu")
         # Simple parsing
         self.df["text"] = self.df["text"].str.lower().parallel_apply(parse_html)
         self.df["title"] = self.df["title"].str.lower()
@@ -153,8 +152,6 @@ class Dataset:
             lambda df: pd.Series(sorted(df.values, key=lambda x: f[x], reverse=True)),
             axis=1,
         )
-
-        self.to("gpu")
 
         return f
 
@@ -261,8 +258,7 @@ class Dataset:
             loader.close()
             plt.show()
         else:
-            texts = self.df["text"].to_pandas() if self.gpu else self.df["text"]
-            [freq.update(sentence.split(" ")) for sentence in tqdm(texts)]
+            [freq.update(sentence.split(" ")) for sentence in tqdm(self.df["text"])]
 
         return freq
 
@@ -320,11 +316,11 @@ class Dataset:
 
             show(index)
         else:
-            line = self.df.loc[index].reset_index()
+            line = self.df.loc[index]
 
-            print("Original " + "=" * 44 + "\n", line[f"original_{mode}"][0])
-            print("Parsed " + "=" * 46 + "\n", str(line[mode][0]))
-            print("Targets " + "=" * 10, line[self.targets].to_pandas().values[0])
+            print("Original " + "=" * 44 + "\n", line[f"original_{mode}"])
+            print("Parsed " + "=" * 46 + "\n", str(line[mode]))
+            print("Targets " + "=" * 10, line[self.targets].values)
 
     def __getitem__(self, index):
         return self.df.loc[index]
