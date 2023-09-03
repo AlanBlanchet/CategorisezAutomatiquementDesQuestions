@@ -33,13 +33,17 @@ python-utils = "^3.7.0"
 # -------------------------------------------------------------------
 tsne-torch = { git = "https://github.com/AlanBlanchet/tsne-pytorch" }
 gensim = "^4.3.1"
-transformers = {extras = ["torch"], version = "^4.31.0"}
+transformers = { extras = ["torch"], version = "^4.31.0" }
 pytorch-lightning = "^2.0.5"
 # pyLDAvis didn't match with pandas version < 2
 pyldavis = { git = "https://github.com/AlanBlanchet/pyLDAvis.git" }
 datasets = "^2.14.1"
-evaluate = "^0.4.0"
 ipykernel = "^6.25.0"
+peft = "^0.4.0"
+mlflow = "^2.5.0"
+dash = "^2.11.1"
+dash-bootstrap-components = "^1.4.2"
+torchvision = "^0.15.2"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.3.0"

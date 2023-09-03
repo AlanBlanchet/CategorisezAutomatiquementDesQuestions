@@ -1,14 +1,12 @@
 {
-  "python.formatting.provider": "black",
-  "editor.formatOnSave": true,
-  "notebook.formatOnSave.enabled": false,
   "files.exclude": {
     "**/Thumbs.db": true,
     "**/__pycache__": true,
     "**/*.egg-info": true
   },
+  "editor.formatOnSave": true,
+  "notebook.formatOnSave.enabled": false,
   "[python]": {
-    "editor.defaultFormatter": "ms-python.black-formatter",
     "editor.codeActionsOnSave": {
       "source.organizeImports": true,
     },

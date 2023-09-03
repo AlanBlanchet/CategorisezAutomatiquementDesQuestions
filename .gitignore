@@ -2,9 +2,10 @@ data/*
 !data/.gitkeep
 
 MLproject*
-mlruns/*
+**/mlruns/*
 
 *.gif
+*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -35,6 +36,7 @@ share/python-wheels/
 MANIFEST
 
 checkpoint*
+bert-*
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
