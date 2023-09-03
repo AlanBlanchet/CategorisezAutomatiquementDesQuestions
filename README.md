@@ -26,20 +26,23 @@ Placer le CSV dans le dossier "data"
 Lancer la commande (nécessite [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html))
 
 ```bash
-conda create --file environment.yml
-conda activate oc
+poetry install
 ```
 
-# Execution
+Il faut ensuite utiliser le kernel créé dans le notebook
 
-```bash
-jupyter notebook
-```
+# Démo
+
+http://oracle.alan-blanchet.fr:8050/
+
+Voici un répertoire avec du texte à copier/coller si vous êtes en manque d'inspiration
 
 # Matériel
 
 Les scripts de ce repo git ont été lancées avec les informations hardware et logiciels suivants :
 
 ```bash
-
+16GiB System memory
+Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz
+GeForce RTX 2070 Mobile
 ```
