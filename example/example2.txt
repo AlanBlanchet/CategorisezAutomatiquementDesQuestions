@@ -1,7 +1,12 @@
-Title :
+Title ================================================================
 
+Tool for comparing Xcode project files
 
-Body :
+Body =================================================================
 
+I've been given the Xcode project files for version 1 and 2 of a iOS app. Version 1 is working, version 2 is buggy with more features. The original programmer is no longer available. No versioning system was used. 
+Is there a tool to compare the different projects - so I can see what code was added between version 1 & 2? 
 
-Tags :
+Tags =================================================================
+
+['ios' 'objective-c' 'iphone' 'xcode' 'version-control']

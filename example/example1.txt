@@ -1,7 +1,19 @@
-Title :
+Title ================================================================
 
+Use string.Contains() with switch()
 
-Body :
+Body =================================================================
 
+I'm doing an C# app where I use
+if ((message.Contains("test")))
+{
+   Console.WriteLine("yes");
+} else if ((message.Contains("test2"))) {
+   Console.WriteLine("yes for test2");
+}
+ 
+There would be any way to change to  switch()  the  if()  statements? 
 
-Tags :
+Tags =================================================================
+
+['c-sharp' 'string' 'if-statement' 'switch-statement' 'contains']

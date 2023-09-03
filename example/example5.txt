@@ -1,7 +1,40 @@
-Title :
+Title ================================================================
 
+I get a .focus() problem with JQUERY MOBILE
 
-Body :
+Body =================================================================
 
+I think that focus event doesn't work with JQuery mobile: here is my code. (when I delete the call to the library jquery mobile, it works) 
+<!DOCTYPE html>
+<html>
+    <head>
+        <link rel="stylesheet" href="http://code.jquery.com/mobile/1.0b2/jquery.mobile-1.0b2.min.css" />
+        <script src="http://code.jquery.com/jquery-1.6.2.min.js"></script>
+        <script src="http://code.jquery.com/mobile/1.0b2/jquery.mobile-1.0b2.min.js"></script>
+    </head>
+    <script type="text/javascript">
+        $(document).ready(function() {
+            $('#acceuil').live('pagecreate', function(event) {
+                $('#declencher').click(function() {
+                    $('#cache').focus();
+                });
+                $('#declencher').trigger('click');
+            });
+        });
+    </script>
+    <body>
+        <div data-role="page" id ="acceuil" >
+            <div data-role="header" data-theme="a" ><h3>aaa</h3></div>
+            <div data-role="content">
+                <input id="cache" type="input">    
+                <input type="button" id="declencher" value="declencher">
+            </div><!-- content-->
+            <div data-role="footer" data-theme="a" data-position="fixed"><h3> Footer </h3></div>
+        </div>
+    </body>
 
-Tags :
+</html>
+
+Tags =================================================================
+
+['jquery' 'jquery-ui' 'jquery-mobile' 'jquery-plugins' 'jquery-selectors']

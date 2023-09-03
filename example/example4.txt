@@ -1,7 +1,55 @@
-Title :
+Title ================================================================
 
+Running Jasper Reports against an in-memory h2 datasource?
 
-Body :
+Body =================================================================
 
+I'm trying to run jasper reports against a live and reporting database, but any reports run against the live database throw exceptions about not finding the right tables (although the default PUBLIC schema is found). It looks like the main  DataSource  connection isn't honoring the H2 connection settings which specify  IGNORECASE=true , as the generated columns and tables are capitalized, by my queries are not. 
+DataSource.groovy  dataSource:   
+dataSource {
+    hibernate {
+        cache.use_second_level_cache = false
+        cache.use_query_cache = false
+    }
 
-Tags :
+    dbCreate = "create-drop" // one of 'create', 'create-drop','update'
+    pooled = true
+    driverClassName = "org.h2.Driver"
+    username = "sa"
+    password = ""
+    url = "jdbc:h2:mem:testDb;MODE=PostgreSQL;IGNORECASE=TRUE;DATABASE_TO_UPPER=false"
+    jndiName = null
+    dialect = null 
+}
+ 
+Datasources.groovy  dataSource:   
+datasource(name: 'reporting') {
+    environments(['development', 'test'])
+    domainClasses([SomeClass])
+    readOnly(false)
+    driverClassName('org.h2.Driver')
+    url('jdbc:h2:mem:testReportingDb;MODE=PostgreSQL;IGNORECASE=TRUE;DATABASE_TO_UPPER=false')
+    username('sa')
+    password('')
+    dbCreate('create-drop')
+    logSql(false)
+    dialect(null)
+    pooled(true)
+    hibernate {
+        cache {
+            use_second_level_cache(false)
+            use_query_cache(false)
+        }
+    }
+}
+ 
+What fails: 
+JasperPrint print = JasperFillManager.fillReport(compiledReport, params,dataSource.getConnection())
+
+While debugging, the only difference I've found is that the live dataSource, when injected or looked up with  DatasourcesUtils.getDataSource(null) , is a  TransactionAwareDatasourceProxy , and  DatasourcesUtils.getDataSource('reporting')  is a  BasicDataSource 
+What do I need to do for Jasper to operate on the active in-memory H2 database? 
+This failure is not reproducible against a real postgres database. 
+
+Tags =================================================================
+
+['postgresql' 'grails' 'h2' 'grails-orm' 'jasper-reports']

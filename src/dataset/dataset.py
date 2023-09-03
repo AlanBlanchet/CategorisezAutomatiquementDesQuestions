@@ -144,12 +144,12 @@ class Dataset:
             text = nltk.RegexpTokenizer(r"\w+[#-+]*").tokenize(" ".join(text))
             return " ".join(text)
 
-        # Simple parsing
-        self.df["text"] = self.df["text"].str.lower().parallel_apply(parse_html)
-        self.df["title"] = self.df["title"].str.lower()
         # Keep original for comparison
-        self.df["original_text"] = self.df["text"]
+        self.df["original_text"] = self.df["text"].parallel_apply(parse_html)
         self.df["original_title"] = self.df["title"]
+        # Simple parsing
+        self.df["text"] = self.df["original_text"].str.lower()
+        self.df["title"] = self.df["original_title"].str.lower()
         # Preprocess
         self.df["text"] = (
             self.df["text"]
