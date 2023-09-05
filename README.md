@@ -33,7 +33,7 @@ Il faut ensuite utiliser le kernel créé dans le notebook
 
 # Démo
 
-http://oracle.alan-blanchet.fr:8050/
+http://oc.alan-blanchet.fr:8050/ ou http://oracle.alan-blanchet.fr:8050/
 
 Voici un répertoire avec du texte à copier/coller si vous êtes en manque d'inspiration
 
