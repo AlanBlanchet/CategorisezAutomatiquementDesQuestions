@@ -141,7 +141,7 @@ if __name__ == "__main__":
 
     output_p = Path("output").resolve()
     loc = output_p / config_p.stem
-    loc.mkdir(exist_ok=True)
+    loc.mkdir(exist_ok=True, parents=True)
 
     # Save run data
     with open(str(loc / "id2label.yaml"), "w") as f:
