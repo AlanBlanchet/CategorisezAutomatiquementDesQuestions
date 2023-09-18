@@ -48,6 +48,7 @@ dash-bootstrap-components = "^1.5.0"
 tensorflow = "^2.13.0"
 tensorflow-hub = "^0.14.0"
 gradient-accumulator = "^0.5.2"
+pandarallel = "^1.6.5"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.3.0"
