@@ -31,6 +31,12 @@ poetry install
 
 Il faut ensuite utiliser le kernel créé dans le notebook
 
+## FYI
+
+J'ai eu des problèmes pour faire les installations des solutions RAPIDS. Et par la suite c'est ce qui a causé des conflits avec d'autres packages.
+
+J'ai donc volontairement commenté les installations de la section RAPIDS dans mon `pyproject.toml`
+
 # Démo
 
 http://oc.alan-blanchet.fr:8050/ ou http://oracle.alan-blanchet.fr:8050/

@@ -27,20 +27,11 @@ from bs4 import BeautifulSoup
 from IPython.display import display
 from pandarallel import pandarallel
 from peft import LoraConfig, get_peft_model
-from sklearn.metrics import (
-    accuracy_score,
-    f1_score,
-    precision_score,
-    recall_score,
-    roc_auc_score,
-)
+from sklearn.metrics import (accuracy_score, f1_score, precision_score,
+                             recall_score)
 from tqdm import tqdm
-from transformers import (
-    AdamW,
-    AutoModelForSequenceClassification,
-    TrainingArguments,
-    get_scheduler,
-)
+from transformers import (AdamW, AutoModelForSequenceClassification,
+                          TrainingArguments, get_scheduler)
 
 from src.models.callback import get_callback
 from src.models.metrics import top_k
@@ -51,16 +42,16 @@ pandarallel.initialize(verbose=0)
 mlflow.autolog(disable=True)
 os.environ["DISABLE_MLFLOW_INTEGRATION"] = "TRUE"
 
-mlflow.set_tracking_uri(
-    f"file://" + str(Path(__file__).parents[2] / "notebooks/mlruns")
-)
+mlflow.set_tracking_uri(f"file://" + str(Path(__file__).parents[2] / "mlruns"))
 
 
 @dataclass
 class Dataset:
     name: str
     n: int = -1
+    sort: bool = True
     device: Literal["gpu", "cpu"] = "cpu"
+    preprocess_type: Literal["stem", "lemmatize"] = "stem"
 
     DEFAULT_VERSION: ClassVar[int] = 1e20
     data_path: ClassVar[Path] = Path(__file__).parents[2] / "data"
@@ -101,6 +92,7 @@ class Dataset:
 
         self.df: pd.DataFrame = df
         # Do some basic preprocessing
+        print("Preprocessing with ", self.preprocess_type)
         self.freq = self.__preprocess()
 
         self._id2label = {k: v for k, v in enumerate(self.freq.keys())}
@@ -131,8 +123,11 @@ class Dataset:
             )
             return text
 
-        def stemming(text):
-            text = [Dataset.nltk_stemmer.stem(plural) for plural in text.split(" ")]
+        def preprocess_text(text):
+            if self.preprocess_type == "stem":
+                text = [Dataset.nltk_stemmer.stem(t) for t in text.split(" ")]
+            else:
+                text = [Dataset.nltk_lemmatizer.lemmatize(t) for t in text.split(" ")]
             return " ".join(text)
 
         def tokenize(text):
@@ -155,13 +150,13 @@ class Dataset:
             self.df["text"]
             .parallel_apply(url_remover)
             .parallel_apply(tokenize)
-            .parallel_apply(stemming)
+            .parallel_apply(preprocess_text)
         )
         self.df["title"] = (
             self.df["title"]
             .parallel_apply(url_remover)
             .parallel_apply(tokenize)
-            .parallel_apply(stemming)
+            .parallel_apply(preprocess_text)
         )
         # Change target encoding
         self.df["target"] = (
@@ -192,11 +187,14 @@ class Dataset:
         for x in self.df[self.targets].values.flatten():
             f[x] += 1
 
-        # Sort targets to have most common to target 1 and lowest to target 5
-        self.df[self.targets] = self.df[self.targets].parallel_apply(
-            lambda df: pd.Series(sorted(df.values, key=lambda x: f[x], reverse=True)),
-            axis=1,
-        )
+        if self.sort:
+            # Sort targets to have most common to target 1 and lowest to target 5
+            self.df[self.targets] = self.df[self.targets].parallel_apply(
+                lambda df: pd.Series(
+                    sorted(df.values, key=lambda x: f[x], reverse=True)
+                ),
+                axis=1,
+            )
 
         return f
 
@@ -215,10 +213,12 @@ class Dataset:
 
             nltk.download("stopwords", download_dir=nltk_path, quiet=True)
             nltk.download("punkt", download_dir=nltk_path, quiet=True)
+            nltk.download("wordnet", download_dir=nltk_path, quiet=True)
             nltk.data.path.append(nltk_path)
 
             cls.nltk_stopwords = nltk.corpus.stopwords.words("english")
             cls.nltk_stemmer = nltk.stem.PorterStemmer()
+            cls.nltk_lemmatizer = nltk.stem.WordNetLemmatizer()
         return cls
 
     def to(self, device: Literal["cpu", "gpu"] = "cpu"):
@@ -427,13 +427,13 @@ class Dataset:
 
         return dataset
 
-    def mlflow_run(self):
+    def mlflow_run(self, name=str(uuid.uuid4())):
         """
         Starts a run and returns a function to call when finished
         """
         if mlflow.active_run() is not None:
             mlflow.end_run()
-        mlflow.start_run(run_name=str(uuid.uuid4()))
+        mlflow.start_run(run_name=name)
         return mlflow.end_run
 
     def trainer(

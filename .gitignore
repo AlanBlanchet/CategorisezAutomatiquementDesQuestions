@@ -4,6 +4,8 @@ data/*
 MLproject*
 **/mlruns/*
 
+output/
+
 *.gif
 *.csv
 
