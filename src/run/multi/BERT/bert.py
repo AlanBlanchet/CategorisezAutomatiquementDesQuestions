@@ -34,6 +34,7 @@ from transformers import (
 from src.dataset.dataset import Dataset
 from src.models.callback import get_callback
 from src.models.trainer import SOTrainer
+from src.run.multi.BERT.MultiLabelBert import MultiLabelBert
 
 os.environ["DISABLE_MLFLOW_INTEGRATION"] = "TRUE"
 
@@ -153,12 +154,27 @@ if __name__ == "__main__":
     with open(str(loc / "config.yaml"), "w") as f:
         yaml.dump(config, f)
 
-    model = BertForSequenceClassification.from_pretrained(
+    w = torch.zeros(len(weights))
+    for id, label in id2label.items():
+        w[id] = weights[label]
+    w = w.cuda()
+
+    loss_name = config.get("loss", "cross_entropy")
+    loss = None
+    if loss_name == "cross_entropy":
+        loss = torch.nn.BCEWithLogitsLoss(weight=w)
+    elif loss_name == "mult_label_soft_margin":
+        loss = torch.nn.MultiLabelSoftMarginLoss(weight=w)
+    else:
+        raise NotImplementedError()
+
+    model = MultiLabelBert.from_pretrained(
         model_name,
         problem_type="multi_label_classification",
         num_labels=len(mlb.classes_),
         id2label=id2label,
         label2id=label2id,
+        loss_fct=loss,
     )
 
     # Weight distribution for BCEntropy
@@ -167,12 +183,6 @@ if __name__ == "__main__":
     # )
     # nb_pos = train_targets.value_counts()
     # weights = (nb_pos.sum() - nb_pos) / nb_pos
-
-    w = torch.zeros(len(weights))
-    for id, label in id2label.items():
-        w[id] = weights[label]
-
-    model.w = w.cuda()
 
     # model.bert.requires_grad_(False)
 
