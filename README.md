@@ -35,13 +35,15 @@ Il faut ensuite utiliser le kernel créé dans le notebook
 
 J'ai eu des problèmes pour faire les installations des solutions RAPIDS. Et par la suite c'est ce qui a causé des conflits avec d'autres packages.
 
-J'ai donc volontairement commenté les installations de la section RAPIDS dans mon `pyproject.toml`
+J'avais donc volontairement commenté les installations de la section RAPIDS dans mon `pyproject.toml`. Maintenant ce n'est plus le cas.
 
 # Démo
 
-http://oc.alan-blanchet.fr:8050/ ou http://oracle.alan-blanchet.fr:8050/
+http://oracle.alan-blanchet.fr:8050/ ou http://oc.alan-blanchet.fr:8050/
 
-Voici un répertoire avec du texte à copier/coller si vous êtes en manque d'inspiration
+[Voici](https://github.com/AlanBlanchet/CategorisezAutomatiquementDesQuestions/tree/master/example) un répertoire avec du texte à copier/coller si vous êtes en manque d'inspiration
+
+Sinon, allez chercher une question sur Stack Overflow et coller là dans le site
 
 # Matériel
 
