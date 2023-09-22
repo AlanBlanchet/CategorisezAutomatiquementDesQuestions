@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import torch
 import yaml
+from accelerate import dispatch_model, infer_auto_device_map
 from peft import LoraConfig, TaskType, get_peft_model
 from sklearn.metrics import (
     accuracy_score,
@@ -25,7 +26,6 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from transformers import (
     AdamW,
     AutoTokenizer,
-    BertForSequenceClassification,
     EvalPrediction,
     TrainingArguments,
     get_scheduler,

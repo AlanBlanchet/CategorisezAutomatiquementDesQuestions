@@ -7,6 +7,8 @@ from transformers.models.bert import BertModel, BertPreTrainedModel
 
 
 class MultiLabelBert(BertPreTrainedModel):
+    _no_split_module = ["BertModel"]
+
     def __init__(self, config, loss_fct):
         super().__init__(config)
         self.num_labels = config.num_labels
