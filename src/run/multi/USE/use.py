@@ -52,16 +52,16 @@ if __name__ == "__main__":
 
     n = 50_000
     target_min_freq = 0.008
-    epochs = 140
-    batch_size = 64
+    epochs = 300
+    batch_size = 64 * 4
     gradient_accumulation_steps = 8
-    lr = 5e-2
+    lr = 1e-3
     lr_decay = 0.99
     lr_decay_steps = 40
 
     with open(str(use_run_p / "params.txt"), "w+") as f:
         f.write(
-            f"{n=}\n{epochs=}\n{target_min_freq=}\n{batch_size=}\n{lr=}\n{lr_decay}\n{lr_decay_steps=}\n"
+            f"{n=}\n{epochs=}\n{target_min_freq=}\n{batch_size=}\n{lr=}\n{lr_decay=}\n{lr_decay_steps=}\n"
         )
 
     lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
@@ -166,13 +166,25 @@ if __name__ == "__main__":
 
     opt = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
 
-    def get_lr_metric(optimizer):
-        def lr(y_true, y_pred):
-            return optimizer.lr
+    def lr_metric(y_true, y_pred):
+        return opt.lr
 
-        return lr
+    def jaccard_samples(y_true, y_pred_sig):
+        y_pred = np.zeros(y_pred_sig.shape)
+        y_pred[np.where(y_pred_sig.numpy() >= 0.5)] = 1
+        return jaccard_score(
+            y_true.numpy(), y_pred, average="samples", zero_division=0.0
+        )
 
-    lr_metric = get_lr_metric(opt)
+    def jaccard_micro(y_true, y_pred_sig):
+        y_pred = np.zeros(y_pred_sig.shape)
+        y_pred[np.where(y_pred_sig.numpy() >= 0.5)] = 1
+        return jaccard_score(y_true.numpy(), y_pred, average="micro", zero_division=0.0)
+
+    def jaccard_macro(y_true, y_pred_sig):
+        y_pred = np.zeros(y_pred_sig.shape)
+        y_pred[np.where(y_pred_sig.numpy() >= 0.5)] = 1
+        return jaccard_score(y_true.numpy(), y_pred, average="macro", zero_division=0.0)
 
     weights.index = [label2id[i] for i in weights.index]
     weights = weights.sort_index()
@@ -207,10 +219,11 @@ if __name__ == "__main__":
             tf.keras.metrics.Precision(),
             tf.keras.metrics.Recall(),
             lr_metric,
-            tf.keras.metrics.MeanIoU(
-                num_classes, sparse_y_true=False, sparse_y_pred=False
-            ),
+            jaccard_samples,
+            jaccard_micro,
+            jaccard_macro,
         ],
+        run_eagerly=True,
     )
 
     end_run = topics.mlflow_run(use_run_p.stem)

@@ -7,4 +7,4 @@ eval_steps: 100
 epochs: 40
 sigmoid_threshold: 0.5
 dataset_size: 50000
-loss: "mult_label_soft_margin"
+loss: "multi_label_soft_margin"

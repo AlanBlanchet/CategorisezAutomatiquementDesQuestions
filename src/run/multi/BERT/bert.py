@@ -163,7 +163,7 @@ if __name__ == "__main__":
     loss = None
     if loss_name == "cross_entropy":
         loss = torch.nn.BCEWithLogitsLoss(weight=w)
-    elif loss_name == "mult_label_soft_margin":
+    elif loss_name == "multi_label_soft_margin":
         loss = torch.nn.MultiLabelSoftMarginLoss(weight=w)
     else:
         raise NotImplementedError()
